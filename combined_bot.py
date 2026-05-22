@@ -1665,7 +1665,7 @@ def handle_hero_logic(message):
             return
         replied_users[user_id_str] = True
         save_user(user_id_str)
-        # أقل من 6 كلمات → رد على الرسالة مباشرة بدون تاك، تحذف بعد 15 دقيقة
+        # أقل من 6 كلمات → رد بالبصمة على الرسالة، تحذف بعد 15 دقيقة
         threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id)).start()
         threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 900)).start()
 
