@@ -1643,9 +1643,7 @@ def handle_hero_logic(message):
         if re.fullmatch(r'[\d\s\+\-\.،,]+', text.strip()):
             return
         if word_count >= 7:
-            try: bot.delete_message(chat_id, message.message_id)
-            except: pass
-            # إذا كان جديداً (أول رسالة) → ارد بالبصمة الصوتية مع تاك
+            # إذا كان جديداً (أول رسالة) → أرسل البصمة مع تاك أولاً ثم احذف الرسالة
             if user_id_str not in replied_users:
                 replied_users[user_id_str] = True
                 save_user(user_id_str)
@@ -1657,7 +1655,22 @@ def handle_hero_logic(message):
                     if _u.last_name:
                         _name += f" {_u.last_name}"
                     _mention = f'<a href="tg://user?id={user_id}">{_name or "أخي"}</a>'
-                threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id, _mention)).start()
+                def _send_then_delete(cid, mid, mention):
+                    time.sleep(1)
+                    try:
+                        voices = [
+                            'CQACAgIAAxkBAAID62mobbzOQ1o4S4KrKF-xw3vNOSoyAALTkwACB05JSaaWNgXn9gqbOgQ',
+                            'CQACAgIAAxkBAAIEIWmodiU9smBOQ4lZG7hc5yU785pvAAJVlAACB05JSbPIhdoDGKQlOgQ'
+                        ]
+                        import random as _random
+                        bot.send_voice(cid, _random.choice(voices), caption=mention, parse_mode="HTML")
+                    except: pass
+                    try: bot.delete_message(cid, mid)
+                    except: pass
+                threading.Thread(target=_send_then_delete, args=(chat_id, message.message_id, _mention)).start()
+            else:
+                try: bot.delete_message(chat_id, message.message_id)
+                except: pass
             return
         if user_id_str in replied_users:
             try: bot.delete_message(chat_id, message.message_id)
