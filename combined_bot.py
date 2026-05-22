@@ -420,7 +420,7 @@ def delete_message_after(chat_id, message_id, delay_seconds):
     except:
         pass
 
-def send_delayed_voice(chat_id, message_id):
+def send_delayed_voice(chat_id, message_id, mention=None):
     time.sleep(5)
     try:
         voices = [
@@ -428,9 +428,11 @@ def send_delayed_voice(chat_id, message_id):
             'CQACAgIAAxkBAAIEIWmodiU9smBOQ4lZG7hc5yU785pvAAJVlAACB05JSbPIhdoDGKQlOgQ'
         ]
         chosen_voice = random.choice(voices)
+        caption = mention if mention else CHANNEL
         bot.send_voice(
             chat_id, chosen_voice,
-            caption=CHANNEL,
+            caption=caption,
+            parse_mode="HTML",
             reply_to_message_id=message_id,
         )
     except:
@@ -1641,9 +1643,22 @@ def handle_hero_logic(message):
     if message.content_type == 'text':
         if re.fullmatch(r'[\d\s\+\-\.،,]+', text.strip()):
             return
-        if word_count >= 6:
+        if word_count >= 7:
             try: bot.delete_message(chat_id, message.message_id)
             except: pass
+            # إذا كان جديداً (أول رسالة) → ارد بالبصمة الصوتية مع تاك
+            if user_id_str not in replied_users:
+                replied_users[user_id_str] = True
+                save_user(user_id_str)
+                _u = message.from_user
+                if _u.username:
+                    _mention = f"@{_u.username}"
+                else:
+                    _name = (_u.first_name or "").strip()
+                    if _u.last_name:
+                        _name += f" {_u.last_name}"
+                    _mention = f'<a href="tg://user?id={user_id}">{_name or "أخي"}</a>'
+                threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id, _mention)).start()
             return
         if user_id_str in replied_users:
             try: bot.delete_message(chat_id, message.message_id)
@@ -1651,9 +1666,9 @@ def handle_hero_logic(message):
             return
         replied_users[user_id_str] = True
         save_user(user_id_str)
+        # أقل من 6 كلمات → رد على الرسالة مباشرة بدون تاك، تحذف بعد 15 دقيقة
         threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id)).start()
-        delay = 21600 if word_count <= 2 else 900
-        threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, delay)).start()
+        threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 900)).start()
 
 
 # ═══════════════════════════════════════
