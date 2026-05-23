@@ -1218,21 +1218,21 @@ def _do_delete_voice(message):
         reporter_info = name.strip() or str(user_id)
 
     try:
-        if target.voice or target.photo or target.video:
+        if target.voice or target.audio or target.photo or target.video:
             bot.forward_message(ADMIN_GROUP_ID, chat_id, target.message_id)
-            media_type = "بصمة صوتية" if target.voice else "صورة" if target.photo else "فيديو"
+            media_type = "بصمة صوتية" if target.voice or target.audio else "صورة" if target.photo else "فيديو"
             bot.send_message(
                 ADMIN_GROUP_ID,
-                f"🚨 تم التبليغ عن {media_type} وحذفها\n"
-                f"👤 المُبلِّغ: {reporter_info}\n"
-                f"👥 المجموعة: {message.chat.title or chat_id}"
+                f"🚨 {media_type} مسيئة\n"
+                f"👤 قام بحذفها: {reporter_info}\n"
+                f"📍 من كروب كباتن صقور العراق"
             )
         else:
             bot.send_message(
                 ADMIN_GROUP_ID,
-                f"🚨 تم حذف رسالة بواسطة أمر ح\n"
-                f"👤 المُبلِّغ: {reporter_info}\n"
-                f"👥 المجموعة: {message.chat.title or chat_id}"
+                f"🚨 رسالة مسيئة تم حذفها\n"
+                f"👤 قام بحذفها: {reporter_info}\n"
+                f"📍 من كروب كباتن صقور العراق"
             )
     except Exception as e:
         print(f"⚠️ خطأ في إرسال التبليغ للإدارة: {e}")
@@ -1321,8 +1321,11 @@ def handle_hero_logic(message):
     # ✅ الإصلاح الرئيسي — فحص "ح" و"ت" قبل أي شيء آخر
     if is_group and message.reply_to_message:
         if text.strip() == 'ح':
-            if user_id in TRUSTED_USERS or is_admin(chat_id, user_id):
+            if user_id in {275721187, 6265596285} or is_admin(chat_id, user_id):
                 _do_delete_voice(message)
+            else:
+                try: bot.delete_message(chat_id, message.message_id)
+                except: pass
             return
 
         if text.strip() == 'ت':
@@ -1678,8 +1681,16 @@ def handle_hero_logic(message):
             return
         replied_users[user_id_str] = True
         save_user(user_id_str)
-        # أقل من 6 كلمات → رد بالبصمة على الرسالة، تحذف بعد 15 دقيقة
-        threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id)).start()
+        # أقل من 7 كلمات → رد بالبصمة مع تاك، تحذف بعد 15 دقيقة
+        _u = message.from_user
+        if _u.username:
+            _mention = f"@{_u.username}"
+        else:
+            _name = (_u.first_name or "").strip()
+            if _u.last_name:
+                _name += f" {_u.last_name}"
+            _mention = f'<a href="tg://user?id={user_id}">{_name or "أخي"}</a>'
+        threading.Thread(target=send_delayed_voice, args=(chat_id, message.message_id, _mention)).start()
         threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 900)).start()
 
 
@@ -2101,6 +2112,71 @@ def handle_glitch_fixed(call):
         print(f"glitch_fixed error: {e}")
 
 
+
+
+@bot.message_handler(commands=['kickbots'])
+def cmd_kickbots(message):
+    if not is_admin(message.chat.id, message.from_user.id):
+        return
+    try: bot.delete_message(message.chat.id, message.message_id)
+    except: pass
+    chat_id = message.chat.id
+    kicked = 0
+    admins = bot.get_chat_administrators(chat_id)
+    for member in admins:
+        user = member.user
+        if user.is_bot and (user.username or "").lower() not in ALLOWED_BOTS:
+            try:
+                bot.ban_chat_member(chat_id, user.id)
+                bot.unban_chat_member(chat_id, user.id)
+                kicked += 1
+                print(f"🚫 طرد البوت: @{user.username}")
+            except Exception as e:
+                print(f"⚠️ فشل: {e}")
+    if kicked:
+        msg = bot.send_message(chat_id, f"🚫 تم طرد {kicked} بوت من المجموعة")
+        threading.Thread(target=delete_message_after, args=(chat_id, msg.message_id, 10)).start()
+
+
+@bot.message_handler(func=lambda m: m.from_user and m.from_user.is_bot and (m.from_user.username or "").lower() not in ALLOWED_BOTS)
+def kick_bot_on_message(message):
+    chat_id = message.chat.id
+    user = message.from_user
+    try:
+        bot.ban_chat_member(chat_id, user.id)
+        bot.unban_chat_member(chat_id, user.id)
+        print(f"🚫 تم طرد البوت: @{user.username}")
+    except Exception as e:
+        print(f"⚠️ فشل طرد @{user.username}: {e}")
+
+# ═══════════════════════════════════════
+# 🤖 منع إضافة البوتات للمجموعة
+# ═══════════════════════════════════════
+
+def _get_allowed_bots():
+    bots = set()
+    try: bots.add(bot.get_me().username.lower())
+    except: pass
+    try: bots.add(telebot.TeleBot(DOWNLOADER_TOKEN).get_me().username.lower())
+    except: pass
+    return bots
+
+ALLOWED_BOTS = _get_allowed_bots()
+
+@bot.message_handler(content_types=['new_chat_members'])
+def handle_new_members(message):
+    chat_id = message.chat.id
+    for new_member in message.new_chat_members:
+        if new_member.is_bot:
+            username = (new_member.username or "").lower()
+            if username not in ALLOWED_BOTS:
+                try:
+                    bot.ban_chat_member(chat_id, new_member.id)
+                    bot.unban_chat_member(chat_id, new_member.id)
+                    print(f"🚫 تم طرد البوت: @{username}")
+                except Exception as e:
+                    print(f"⚠️ فشل طرد البوت {username}: {e}")
+
 # ═══════════════════════════════════════
 # 🎬 بوت التحميل المستقل
 # ═══════════════════════════════════════
@@ -2164,9 +2240,30 @@ def resolve_default_groups():
         except Exception as e:
             print(f"⚠️ تعذر جلب {username}: {e}")
 
+def kick_existing_bots():
+    """يطرد جميع البوتات الموجودة في المجموعات عند تشغيل البوت"""
+    groups = load_groups()
+    for chat_id in groups:
+        try:
+            members = bot.get_chat_administrators(chat_id)
+            # نجلب الأعضاء العاديين عبر export_chat_invite_link ثم نستخدم get_chat_member
+            # لكن تيليغرام لا يسمح بجلب كل الأعضاء، نعتمد على الأدمن فقط
+            for member in members:
+                user = member.user
+                if user.is_bot and (user.username or "").lower() not in ALLOWED_BOTS:
+                    try:
+                        bot.ban_chat_member(chat_id, user.id)
+                        bot.unban_chat_member(chat_id, user.id)
+                        print(f"🚫 تم طرد البوت الموجود: @{user.username} من {chat_id}")
+                    except Exception as e:
+                        print(f"⚠️ فشل طرد @{user.username}: {e}")
+        except Exception as e:
+            print(f"⚠️ خطأ في فحص المجموعة {chat_id}: {e}")
+
 if __name__ == "__main__":
     print("✅ البوت الرئيسي يعمل...")
     resolve_default_groups()
+    threading.Thread(target=kick_existing_bots, daemon=True).start()
 
     downloader_thread = threading.Thread(target=run_downloader_bot, daemon=True)
     downloader_thread.start()
