@@ -6,3 +6,4 @@ faster-whisper
 requests
 firebase-admin
 reportlab
+weasyprint
