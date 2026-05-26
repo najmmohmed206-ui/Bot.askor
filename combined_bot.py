@@ -49,7 +49,6 @@ TRUSTED_USERS = {
 GROUP_LINK       = "https://t.me/FalconsofIraq"
 
 DOWNLOADER_TOKEN   = os.environ.get('DOWNLOADER_TOKEN',   '8266072398:AAHO8y2Vd-i-3h9MQbx_i2ui2mMl6X9RRcY')
-DEEP_IMAGE_API_KEY = os.environ.get('DEEP_IMAGE_API_KEY', '1d7816c0-58cf-11f1-93af-11bef8d5097d')   # ← ضع مفتاحك من deep-image.ai
 
 # ═══════════════════════════════════════
 # 🔞 Sightengine — كشف الصور الإباحية
@@ -491,7 +490,6 @@ def get_general_services_menu():
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="gs_pdf"),
-        telebot.types.InlineKeyboardButton("🖼 تحسين الصور",              callback_data="gs_enhance"),
         telebot.types.InlineKeyboardButton("📱 لدي مشكلة بالتطبيقات",    callback_data="gs_apps"),
     )
     return markup
@@ -622,97 +620,6 @@ def generate_pdf_and_send(chat_id, message_id, text):
 # ═══════════════════════════════════════
 # 🖼 تحسين الصور — Deep-Image.ai API
 # ═══════════════════════════════════════
-def upscale_and_send(chat_id, message_id, file_id):
-    """تحميل الصورة → base64 → deep-image.ai → إعادة الصورة المحسّنة"""
-    import base64
-    try:
-        bot.send_chat_action(chat_id, 'upload_photo')
-
-        # ١. فحص المفتاح
-        if not DEEP_IMAGE_API_KEY:
-            bot.send_message(chat_id,
-                "⚠️ مفتاح API لتحسين الصور غير مضبوط.\n"
-                "أضف DEEP_IMAGE_API_KEY في متغيرات Railway.",
-                reply_to_message_id=message_id)
-            return
-
-        # ٢. تحميل الصورة من تيليغرام وتحويلها base64
-        file_info  = bot.get_file(file_id)
-        img_bytes  = bot.download_file(file_info.file_path)
-        b64_image  = base64.b64encode(img_bytes).decode("utf-8")
-
-        # ٣. إرسال JSON لـ Deep-Image.ai  (header: X-API-KEY)
-        payload = {
-            "url":          f"data:image/jpeg;base64,{b64_image}",
-            "width":        "200%",
-            "height":       "200%",
-            "enhancements": ["denoise", "deblur"]
-        }
-        resp = requests.post(
-            "https://deep-image.ai/rest_api/process",
-            headers={
-                "X-API-KEY":    DEEP_IMAGE_API_KEY,
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=90
-        )
-
-        data = resp.json()
-        print(f"deep-image response: {resp.status_code} — {data}")
-
-        # ٤. فحص النتيجة (sync أو async)
-        if resp.status_code == 200 and data.get("status") == "complete":
-            result_url = data.get("result_url")
-        else:
-            job_id = data.get("job") or data.get("id")
-            if job_id:
-                result_url = _poll_deep_image(job_id)
-            else:
-                result_url = None
-
-        if not result_url:
-            err = data.get("message") or data.get("error") or "خطأ غير معروف"
-            bot.send_message(chat_id,
-                f"⚠️ فشل التحسين: {err}",
-                reply_to_message_id=message_id)
-            return
-
-        # ٥. تحميل الصورة المحسّنة وإرسالها
-        img_resp = requests.get(result_url, timeout=60)
-        out_path = f"/tmp/enhanced_{chat_id}_{int(time.time())}.jpg"
-        with open(out_path, "wb") as f:
-            f.write(img_resp.content)
-
-        with open(out_path, "rb") as f:
-            bot.send_photo(
-                chat_id, f,
-                caption="🖼 صورتك بعد التحسين ×2 — صقور العراق 🦅",
-                reply_to_message_id=message_id
-            )
-        os.remove(out_path)
-
-    except Exception as e:
-        print(f"upscale error: {e}")
-        bot.send_message(chat_id, "⚠️ حدث خطأ أثناء تحسين الصورة، حاول مجدداً.")
-
-def _poll_deep_image(job_id: str, retries=10, wait=4) -> str | None:
-    """polling لانتظار نتيجة Deep-Image async"""
-    for _ in range(retries):
-        time.sleep(wait)
-        try:
-            r = requests.get(
-                f"https://deep-image.ai/rest_api/result/{job_id}",
-                headers={"X-API-KEY": DEEP_IMAGE_API_KEY},
-                timeout=30
-            )
-            d = r.json()
-            if d.get("status") == "complete":
-                return d.get("result_url")
-        except:
-            pass
-    return None
-
 def get_assign_buttons():
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     for key, label in BUTTON_KEYS.items():
@@ -830,22 +737,6 @@ def handle_callbacks(call):
             bot.edit_message_text(
                 "📄 *تحويل النص إلى مستند PDF*\n\n"
                 "أرسل النص الذي تريد تحويله وسأرسله لك كملف PDF احترافي ✅",
-                chat_id, call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=telebot.types.InlineKeyboardMarkup().add(
-                    telebot.types.InlineKeyboardButton("❌ إلغاء", callback_data="gs_back")
-                )
-            )
-        except: pass
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "gs_enhance":
-        pending_gs[user_id] = "enhance"
-        try:
-            bot.edit_message_text(
-                "🖼 *تحسين الصور*\n\n"
-                "أرسل الصورة التي تريد تحسينها وسأعيدها إليك بجودة أعلى ✅",
                 chat_id, call.message.message_id,
                 parse_mode="Markdown",
                 reply_markup=telebot.types.InlineKeyboardMarkup().add(
@@ -1321,24 +1212,6 @@ def handle_gs_pdf_text(message):
     ).start()
     try: bot.delete_message(message.chat.id, wait_msg.message_id)
     except: pass
-
-
-@bot.message_handler(content_types=['photo'],
-                     func=lambda m: m.chat.type == 'private'
-                                    and m.from_user.id != OWNER_ID
-                                    and m.from_user.id not in ALERT_ADMINS
-                                    and m.from_user.id in pending_gs
-                                    and pending_gs[m.from_user.id] == 'enhance')
-def handle_gs_enhance_photo(message):
-    user_id = message.from_user.id
-    pending_gs.pop(user_id, None)
-    file_id = message.photo[-1].file_id
-    bot.reply_to(message, "⏳ جاري تحسين الصورة، انتظر قليلاً...")
-    threading.Thread(
-        target=upscale_and_send,
-        args=(message.chat.id, message.message_id, file_id),
-        daemon=True
-    ).start()
 
 
 @bot.message_handler(content_types=['text'],
