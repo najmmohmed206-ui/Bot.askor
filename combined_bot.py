@@ -48,7 +48,7 @@ TRUSTED_USERS = {
 }
 GROUP_LINK       = "https://t.me/FalconsofIraq"
 
-DOWNLOADER_TOKEN   = os.environ.get('DOWNLOADER_TOKEN',   '8266072398:AAHO8y2Vd-i-3h9MQbx_i2ui2mMl6X9RRcY')
+DOWNLOADER_TOKEN = os.environ.get('DOWNLOADER_TOKEN', '8266072398:AAHO8y2Vd-i-3h9MQbx_i2ui2mMl6X9RRcY')
 
 # ═══════════════════════════════════════
 # 🔞 Sightengine — كشف الصور الإباحية
@@ -110,10 +110,6 @@ def firebase_delete_request(chat_id):
     _memory_requests.pop(chat_id, None)
 
 bot = telebot.TeleBot(BOT_TOKEN)
-try:
-    BOT_USERNAME = bot.get_me().username
-except:
-    BOT_USERNAME = ""
 DB_FILE      = "users_db.txt"
 VIDEOS_FILE  = "videos_db.json"
 BUTTONS_FILE = "buttons_db.json"
@@ -123,7 +119,6 @@ pending_admin   = {}
 pending_video   = {}
 pending_mention = {}
 glitch_sessions = {}
-pending_gs      = {}   # {user_id: 'pdf' | 'enhance'}  — انتظار إدخال المستخدم للخدمات العامة
 
 # ═══════════════════════════════════════
 # 📋 حفظ المجموعات تلقائياً
@@ -490,140 +485,6 @@ def get_mastercard_menu():
     )
     return markup
 
-def get_general_services_menu():
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="gs_pdf"),
-        telebot.types.InlineKeyboardButton("📱 لدي مشكلة بالتطبيقات",    callback_data="gs_apps"),
-    )
-    return markup
-
-def get_apps_problem_menu():
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("🚖 مشكلة Uber",  callback_data="menu_uber"),
-        telebot.types.InlineKeyboardButton("🟢 مشكلة Baly",  callback_data="menu_baly"),
-        telebot.types.InlineKeyboardButton("🟡 مشكلة Oper",  callback_data="menu_oper"),
-        telebot.types.InlineKeyboardButton("🔙 رجوع",        callback_data="gs_back"),
-    )
-    return markup
-
-# ═══════════════════════════════════════
-# 📄 PDF — تحويل النص إلى مستند
-# ═══════════════════════════════════════
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_RIGHT
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.units import cm
-    from reportlab.lib import colors
-    REPORTLAB_OK = True
-except ImportError:
-    REPORTLAB_OK = False
-    print("⚠️ reportlab غير مثبت — خدمة PDF معطلة")
-
-def _make_pdf(text: str, out_path: str) -> bool:
-    """تحويل نص عربي إلى PDF احترافي بدون لوغو"""
-    if not REPORTLAB_OK:
-        return False
-    try:
-        # ── خط عربي (Amiri) ──
-        FONT_PATH = "/home/claude/Amiri-Regular.ttf"
-        FONT_NAME = "Amiri"
-        if not os.path.exists(FONT_PATH):
-            import urllib.request
-            urllib.request.urlretrieve(
-                "https://github.com/aliftype/amiri/releases/download/1.000/Amiri-1.000.zip",
-                "/home/claude/amiri.zip"
-            )
-            import zipfile
-            with zipfile.ZipFile("/home/claude/amiri.zip") as z:
-                for n in z.namelist():
-                    if "Amiri-Regular.ttf" in n:
-                        with z.open(n) as src, open(FONT_PATH, "wb") as dst:
-                            dst.write(src.read())
-                        break
-        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
-
-        doc = SimpleDocTemplate(
-            out_path,
-            pagesize=A4,
-            rightMargin=2*cm, leftMargin=2*cm,
-            topMargin=2.5*cm, bottomMargin=2*cm
-        )
-
-        GOLD   = colors.HexColor("#C8A84B")
-        DARK   = colors.HexColor("#1A1A2E")
-
-        styles = getSampleStyleSheet()
-        body_style = ParagraphStyle(
-            "ArabicBody",
-            fontName=FONT_NAME,
-            fontSize=13,
-            leading=22,
-            alignment=TA_RIGHT,
-            textColor=DARK,
-            spaceAfter=8,
-        )
-        header_style = ParagraphStyle(
-            "ArabicHeader",
-            fontName=FONT_NAME,
-            fontSize=11,
-            alignment=TA_RIGHT,
-            textColor=GOLD,
-        )
-
-        story = []
-        # شريط علوي ذهبي
-        from reportlab.platypus import HRFlowable
-        story.append(HRFlowable(width="100%", thickness=3, color=GOLD, spaceAfter=10))
-        story.append(Paragraph("🦅 صقور العراق", header_style))
-        story.append(HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=18))
-
-        # النص — كل سطر فقرة منفصلة للعربي
-        for line in text.splitlines():
-            line = line.strip()
-            if line:
-                story.append(Paragraph(line, body_style))
-            else:
-                story.append(Spacer(1, 8))
-
-        story.append(Spacer(1, 20))
-        story.append(HRFlowable(width="100%", thickness=1, color=GOLD))
-
-        doc.build(story)
-        return True
-    except Exception as e:
-        print(f"PDF error: {e}")
-        return False
-
-def generate_pdf_and_send(chat_id, message_id, text):
-    """دالة تعمل في thread — تولّد PDF وترسله"""
-    try:
-        bot.send_chat_action(chat_id, 'upload_document')
-        out = f"/home/claude/doc_{chat_id}_{int(time.time())}.pdf"
-        ok = _make_pdf(text, out)
-        if ok and os.path.exists(out):
-            with open(out, "rb") as f:
-                bot.send_document(
-                    chat_id, f,
-                    caption="📄 ملفك جاهز — صقور العراق 🦅",
-                    reply_to_message_id=message_id
-                )
-            os.remove(out)
-        else:
-            bot.send_message(chat_id, "⚠️ حدث خطأ في إنشاء الـ PDF، حاول مجدداً.",
-                             reply_to_message_id=message_id)
-    except Exception as e:
-        print(f"generate_pdf error: {e}")
-        bot.send_message(chat_id, "⚠️ فشل إنشاء الـ PDF.")
-
-# ═══════════════════════════════════════
-# 🖼 تحسين الصور — Deep-Image.ai API
-# ═══════════════════════════════════════
 def get_assign_buttons():
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     for key, label in BUTTON_KEYS.items():
@@ -719,51 +580,6 @@ def handle_callbacks(call):
             print(f"glitch_fixed error: {e}")
         return
 
-    # ══════════════════════════════════════
-    # 🛠 الخدمات العامة — callbacks
-    # ══════════════════════════════════════
-
-    if data == "gs_back":
-        pending_gs.pop(user_id, None)
-        try:
-            bot.edit_message_text(
-                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-                chat_id, call.message.message_id,
-                reply_markup=get_general_services_menu()
-            )
-        except: pass
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "gs_pdf":
-        pending_gs[user_id] = "pdf"
-        try:
-            bot.edit_message_text(
-                "📄 *تحويل النص إلى مستند PDF*\n\n"
-                "أرسل النص الذي تريد تحويله وسأرسله لك كملف PDF احترافي ✅",
-                chat_id, call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=telebot.types.InlineKeyboardMarkup().add(
-                    telebot.types.InlineKeyboardButton("❌ إلغاء", callback_data="gs_back")
-                )
-            )
-        except: pass
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "gs_apps":
-        pending_gs.pop(user_id, None)
-        try:
-            bot.edit_message_text(
-                "📱 *مشكلة بالتطبيقات*\n\nاختر التطبيق الذي تواجه فيه مشكلة 👇",
-                chat_id, call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=get_apps_problem_menu()
-            )
-        except: pass
-        bot.answer_callback_query(call.id)
-        return
-
     if data == "menu_uber":
         try: bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=get_uber_menu())
         except: pass
@@ -793,37 +609,15 @@ def handle_callbacks(call):
         except: pass
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش",  url=ZAIN_CASH_AGENTS_URL),
-            telebot.types.InlineKeyboardButton("🏪 كشك",             url=KIOSK_URL),
-            telebot.types.InlineKeyboardButton("⛽ محطات الغاز",     url=GAS_STATION_URL),
-            telebot.types.InlineKeyboardButton("🛠 خدمات عامة",      callback_data="menu_general_services"),
+            telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
+            telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
+            telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
         )
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_markup=markup)
         except Exception as e:
             print(f"خطأ في إرسال الأزرار: {e}")
         bot.answer_callback_query(call.id)
-        return
-
-    if data == "menu_general_services":
-        user_id = call.from_user.id
-        # إرسال رسالة في الخاص مباشرة
-        try:
-            bot.send_message(
-                user_id,
-                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-                reply_markup=get_general_services_menu()
-            )
-            bot.answer_callback_query(call.id, "✅ تم فتح الخدمات في الخاص", show_alert=False)
-        except Exception as e:
-            # إذا لم يبدأ المستخدم الخاص بعد
-            services_url = f"https://t.me/{BOT_USERNAME}?start=general_services" if BOT_USERNAME else GROUP_LINK
-            bot.answer_callback_query(call.id, "⚠️ افتح الخاص مع البوت أولاً", show_alert=True)
-            try:
-                markup_pm = telebot.types.InlineKeyboardMarkup()
-                markup_pm.add(telebot.types.InlineKeyboardButton("🛠 افتح الخدمات", url=services_url))
-                bot.send_message(call.message.chat.id, "👇 اضغط لفتح الخدمات في الخاص:", reply_markup=markup_pm)
-            except: pass
         return
 
     if data == "mc_fix":
@@ -1022,10 +816,6 @@ def start_command(message):
     user_id    = message.from_user.id
     first_name = message.from_user.first_name or "أخي"
 
-    # ── فحص deep link ──
-    args    = message.text.split() if message.text else []
-    payload = args[1] if len(args) > 1 else ""
-
     if user_id == OWNER_ID:
         bot.send_message(message.chat.id, '⚙️ لوحة الإدارة - اختر ما تريد تعديله:',
                          reply_markup=get_admin_panel())
@@ -1036,15 +826,6 @@ def start_command(message):
         markup.add(telebot.types.InlineKeyboardButton("📢 إرسال تنبيه للمجموعات", callback_data="adm_alert"))
         markup.add(telebot.types.InlineKeyboardButton("📍 تجمع",                   callback_data="adm_gather"))
         bot.send_message(message.chat.id, '📢 لوحة التنبيهات:', reply_markup=markup)
-        return
-
-    # ── زر خدمات عامة ──
-    if payload == "general_services":
-        bot.send_message(
-            message.chat.id,
-            "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-            reply_markup=get_general_services_menu()
-        )
         return
 
     welcome = (
@@ -1210,29 +991,6 @@ def handle_private_video(message):
 # ═══════════════════════════════════════
 # خاص: رسائل الأعضاء العاديين
 # ═══════════════════════════════════════
-
-@bot.message_handler(content_types=['text'],
-                     func=lambda m: m.chat.type == 'private'
-                                    and m.from_user.id != OWNER_ID
-                                    and m.from_user.id not in ALERT_ADMINS
-                                    and m.from_user.id in pending_gs
-                                    and pending_gs[m.from_user.id] == 'pdf')
-def handle_gs_pdf_text(message):
-    user_id = message.from_user.id
-    pending_gs.pop(user_id, None)
-    text = message.text.strip()
-    if not text:
-        bot.reply_to(message, "⚠️ الرسالة فارغة، أرسل النص مجدداً.")
-        return
-    wait_msg = bot.reply_to(message, "⏳ جاري إنشاء الملف...")
-    threading.Thread(
-        target=generate_pdf_and_send,
-        args=(message.chat.id, message.message_id, text),
-        daemon=True
-    ).start()
-    try: bot.delete_message(message.chat.id, wait_msg.message_id)
-    except: pass
-
 
 @bot.message_handler(content_types=['text'],
                      func=lambda m: m.chat.type == 'private' and m.from_user.id != OWNER_ID
