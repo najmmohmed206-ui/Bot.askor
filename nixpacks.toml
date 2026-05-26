@@ -1,5 +1,7 @@
 [phases.setup]
-nixPkgs = ["ffmpeg", "python311", "pango", "gdk-pixbuf", "libffi", "cairo", "fontconfig"]
+nixPkgs = ["ffmpeg", "python311", "pa", "gobject-introspection", "glib"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]
+[phases.setup]
+nixPkgs = ["ffmpeg", "python311", "pa", "gobject-introspection", "glib", "cairo", "pango", "gtk3"]
