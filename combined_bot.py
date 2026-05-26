@@ -1585,6 +1585,25 @@ def handle_hero_logic(message):
         return
 
     if message.content_type in ['photo', 'video']:
+        # ── استثناء: فيديو محوّل من بوت التحميل → لا تحذف ──
+        _fwd_from = getattr(message, 'forward_from', None)
+        _fwd_from_chat2 = getattr(message, 'forward_from_chat', None)
+        _fwd_origin2 = getattr(message, 'forward_origin', None)
+        _dl_bot_id = int(DOWNLOADER_TOKEN.split(':')[0])  # 8266072398
+        _dl_bot_username = 'iiqqsk_bot'
+        _cap_lower = (message.caption or '').lower()
+        _is_from_dl_bot = (
+            (_fwd_from and _fwd_from.id == _dl_bot_id) or
+            (_fwd_from and (_fwd_from.username or '').lower() == _dl_bot_username) or
+            (_fwd_from_chat2 and _fwd_from_chat2.id == _dl_bot_id) or
+            (_fwd_origin2 and getattr(getattr(_fwd_origin2, 'sender_user', None), 'id', None) == _dl_bot_id) or
+            (_fwd_origin2 and (_dl_bot_username in str(getattr(getattr(_fwd_origin2, 'sender_user', None), 'username', '') or '').lower())) or
+            'falconsofiraq' in _cap_lower or
+            't.me/falconsofiraq' in _cap_lower
+        )
+        if _is_from_dl_bot:
+            return
+
         caption = message.caption or ""
 
         # ── فحص الكابشن: @ مع كتابة أو رموز → احذف فوراً ──
