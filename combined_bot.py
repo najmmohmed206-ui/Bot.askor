@@ -791,19 +791,39 @@ def handle_callbacks(call):
     if data == "menu_gas":
         try: bot.delete_message(chat_id, call.message.message_id)
         except: pass
-        services_url = f"https://t.me/{BOT_USERNAME}?start=general_services" if BOT_USERNAME else GROUP_LINK
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
         markup.add(
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش",  url=ZAIN_CASH_AGENTS_URL),
             telebot.types.InlineKeyboardButton("🏪 كشك",             url=KIOSK_URL),
             telebot.types.InlineKeyboardButton("⛽ محطات الغاز",     url=GAS_STATION_URL),
-            telebot.types.InlineKeyboardButton("🛠 خدمات عامة",      url=services_url),
+            telebot.types.InlineKeyboardButton("🛠 خدمات عامة",      callback_data="menu_general_services"),
         )
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_markup=markup)
         except Exception as e:
             print(f"خطأ في إرسال الأزرار: {e}")
         bot.answer_callback_query(call.id)
+        return
+
+    if data == "menu_general_services":
+        user_id = call.from_user.id
+        # إرسال رسالة في الخاص مباشرة
+        try:
+            bot.send_message(
+                user_id,
+                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
+                reply_markup=get_general_services_menu()
+            )
+            bot.answer_callback_query(call.id, "✅ تم فتح الخدمات في الخاص", show_alert=False)
+        except Exception as e:
+            # إذا لم يبدأ المستخدم الخاص بعد
+            services_url = f"https://t.me/{BOT_USERNAME}?start=general_services" if BOT_USERNAME else GROUP_LINK
+            bot.answer_callback_query(call.id, "⚠️ افتح الخاص مع البوت أولاً", show_alert=True)
+            try:
+                markup_pm = telebot.types.InlineKeyboardMarkup()
+                markup_pm.add(telebot.types.InlineKeyboardButton("🛠 افتح الخدمات", url=services_url))
+                bot.send_message(call.message.chat.id, "👇 اضغط لفتح الخدمات في الخاص:", reply_markup=markup_pm)
+            except: pass
         return
 
     if data == "mc_fix":
