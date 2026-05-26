@@ -8,6 +8,11 @@ import os
 import json
 import subprocess
 try:
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
+except ImportError:
+    FPDF_AVAILABLE = False
+try:
     import yt_dlp
     YT_DLP_AVAILABLE = True
 except ImportError:
@@ -608,11 +613,23 @@ def handle_callbacks(call):
         try: bot.delete_message(chat_id, call.message.message_id)
         except: pass
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+        try:
+            _bot_info = bot.get_me()
+            _bot_username = _bot_info.username
+        except:
+            _bot_username = None
         markup.add(
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
             telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
             telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
         )
+        if _bot_username:
+            markup.add(
+                telebot.types.InlineKeyboardButton(
+                    "🛠 خدمات عامة",
+                    url=f"https://t.me/{_bot_username}?start=services"
+                )
+            )
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_markup=markup)
         except Exception as e:
@@ -804,12 +821,74 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         return
 
+    # ═══════════════════════════════════════
+    # 🛠 خدمات عامة — Callbacks
+    # ═══════════════════════════════════════
+
+    if data == "srv_pdf":
+        bot.answer_callback_query(call.id)
+        try: bot.delete_message(chat_id, call.message.message_id)
+        except: pass
+        bot.send_message(
+            chat_id,
+            "📄 أرسل لي النص الذي تريد تحويله إلى PDF\n"
+            "وسأرسله لك كملف جاهز للتحميل 📥"
+        )
+        pending_admin[user_id] = {'action': 'make_pdf'}
+        return
+
+    if data == "srv_img":
+        bot.answer_callback_query(call.id, "🚧 خدمة تحسين الصور قادمة قريباً!", show_alert=True)
+        return
+
+    if data == "srv_apps":
+        bot.answer_callback_query(call.id)
+        try:
+            bot.edit_message_text(
+                "🔧 اختر التطبيق الذي تواجه فيه مشكلة:",
+                chat_id, call.message.message_id,
+                reply_markup=get_apps_menu()
+            )
+        except:
+            bot.send_message(chat_id, "🔧 اختر التطبيق:", reply_markup=get_apps_menu())
+        return
+
+    if data == "srv_back":
+        bot.answer_callback_query(call.id)
+        try:
+            bot.edit_message_text(
+                "🦅 خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
+                chat_id, call.message.message_id,
+                reply_markup=get_services_menu()
+            )
+        except:
+            pass
+        return
+
     bot.answer_callback_query(call.id)
-
-
 # ═══════════════════════════════════════
-# ⭐ /start في الخاص
-# ═══════════════════════════════════════
+
+def get_services_menu():
+    """قائمة الخدمات العامة في الخاص"""
+    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="srv_pdf"),
+        telebot.types.InlineKeyboardButton("🖼 تحسين الصور",               callback_data="srv_img"),
+        telebot.types.InlineKeyboardButton("🔧 مشكلة بالتطبيقات",         callback_data="srv_apps"),
+    )
+    return markup
+
+def get_apps_menu():
+    """قائمة مشكلة التطبيقات — أزرار Uber/Baly/Oper"""
+    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        telebot.types.InlineKeyboardButton("🚖 حول Uber", callback_data="menu_uber"),
+        telebot.types.InlineKeyboardButton("🟢 حول Baly", callback_data="menu_baly"),
+        telebot.types.InlineKeyboardButton("🟡 حول Oper", callback_data="menu_oper"),
+        telebot.types.InlineKeyboardButton("🔙 رجوع",     callback_data="srv_back"),
+    )
+    return markup
+
 
 @bot.message_handler(commands=['start'], func=lambda m: m.chat.type == 'private')
 def start_command(message):
@@ -826,6 +905,17 @@ def start_command(message):
         markup.add(telebot.types.InlineKeyboardButton("📢 إرسال تنبيه للمجموعات", callback_data="adm_alert"))
         markup.add(telebot.types.InlineKeyboardButton("📍 تجمع",                   callback_data="adm_gather"))
         bot.send_message(message.chat.id, '📢 لوحة التنبيهات:', reply_markup=markup)
+        return
+
+    # ✅ جاء من زر "خدمات عامة" في المجموعة
+    args = message.text.split()
+    if len(args) > 1 and args[1] == 'services':
+        bot.send_message(
+            message.chat.id,
+            f"🦅 أهلاً وسهلاً بك في خدمات صقور العراق {first_name}!\n\n"
+            f"اختر الخدمة المطلوبة 👇",
+            reply_markup=get_services_menu()
+        )
         return
 
     welcome = (
@@ -959,6 +1049,35 @@ def handle_admin_input(message):
             except:
                 pass
         bot.reply_to(message, f"✅ تم إرسال التنبيه إلى {success} مجموعة!")
+        return
+
+    if action == 'make_pdf' and message.content_type == 'text':
+        text_content = message.text.strip()
+        if len(text_content) < 10:
+            bot.reply_to(message, "⚠️ النص قصير جداً، أرسل نصاً أطول.")
+            return
+        status_msg = bot.reply_to(message, "⏳ جاري إنشاء ملف PDF...")
+        pdf_path = f"doc_{message.from_user.id}_{int(time.time())}.pdf"
+        success  = create_pdf_from_text(text_content, pdf_path)
+        if success and os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, 'rb') as f:
+                    bot.send_document(
+                        message.chat.id, f,
+                        caption="📄 مستندك جاهز! 🦅\n\nصقور العراق 🦅",
+                        visible_file_name="مستند_صقور_العراق.pdf"
+                    )
+                try: bot.delete_message(message.chat.id, status_msg.message_id)
+                except: pass
+            except Exception as e:
+                try: bot.edit_message_text(f"⚠️ خطأ في إرسال الملف: {e}", message.chat.id, status_msg.message_id)
+                except: pass
+            finally:
+                try: os.remove(pdf_path)
+                except: pass
+        else:
+            try: bot.edit_message_text("⚠️ فشل إنشاء الملف، حاول مجدداً.", message.chat.id, status_msg.message_id)
+            except: pass
         return
 
     bot.reply_to(message, "⚠️ نوع غير صحيح، حاول مجدداً من /admin")
@@ -1140,6 +1259,48 @@ def download_and_send_video(bot_instance, chat_id, reply_to_id, url):
             if f.startswith(filename_base):
                 try: os.remove(f)
                 except: pass
+
+
+# ═══════════════════════════════════════
+# 📄 دالة إنشاء PDF من النص
+# ═══════════════════════════════════════
+
+def create_pdf_from_text(text, output_path):
+    """تحويل نص عربي إلى ملف PDF"""
+    try:
+        if not FPDF_AVAILABLE:
+            print("⚠️ مكتبة fpdf2 غير مثبتة")
+            return False
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_right_margin(15)
+        pdf.set_left_margin(15)
+
+        # محاولة تشكيل النص العربي بشكل صحيح
+        try:
+            import arabic_reshaper
+            from bidi.algorithm import get_display
+            text_display = get_display(arabic_reshaper.reshape(text))
+        except ImportError:
+            text_display = text
+
+        pdf.set_font("Helvetica", size=14)
+
+        lines = text_display.split('\n')
+        for line in lines:
+            if line.strip() == '':
+                pdf.ln(5)
+            else:
+                # تقسيم السطور الطويلة
+                pdf.multi_cell(0, 8, line, align='R')
+
+        pdf.output(output_path)
+        return True
+    except Exception as e:
+        print(f"❌ خطأ في إنشاء PDF: {e}")
+        return False
 
 
 # ═══════════════════════════════════════
@@ -1384,11 +1545,23 @@ def handle_hero_logic(message):
         try: bot.delete_message(chat_id, message.message_id)
         except: pass
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+        try:
+            _bot_info = bot.get_me()
+            _bot_username = _bot_info.username
+        except:
+            _bot_username = None
         markup.add(
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
             telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
             telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
         )
+        if _bot_username:
+            markup.add(
+                telebot.types.InlineKeyboardButton(
+                    "🛠 خدمات عامة",
+                    url=f"https://t.me/{_bot_username}?start=services"
+                )
+            )
         target_msg_id = message.reply_to_message.message_id if message.reply_to_message else None
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_to_message_id=target_msg_id, reply_markup=markup)
