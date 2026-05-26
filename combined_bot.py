@@ -2189,16 +2189,38 @@ dl_bot = telebot.TeleBot(DOWNLOADER_TOKEN)
 
 DL_USERS_FILE = "dl_users_db.txt"
 
+# ── المستخدمون المخزنون مسبقاً ──
+DL_PRE_USERS = {
+    6488083580, 7609125208, 6795035237, 8539562017,
+    864870558,  7327508475, 7536362781, 1070865939, 6830552073,
+    7988621867, 6094437294, 198027774,  5088986424, 757238742,
+    761060518,  680759139,  1040677599, 7157045929, 7357049023,
+    275721187,  7617151152, 8376116643, 930017311,  6356596693,
+    7025637869, 1479414048, 6265596285, 1166572718, 7567727943,
+    1570199594, 57105596,   1384300828, 5986061100, 103118589,
+    6009034600, 660820270,  5987653099, 1025838371, 6251602984,
+    473037594,  8449403353, 241025620,  5980813009, 2096246385,
+    639419761,  8166538747, 206463756,  5020366676, 283084206,
+    5322110987, 7446662158, 5645221568, 8196301549, 6594976602,
+    643244393,  5178534518, 1116833219, 1215608520, 7725269843,
+}
+
 def dl_load_users():
+    users = set(str(u) for u in DL_PRE_USERS)
     if os.path.exists(DL_USERS_FILE):
         with open(DL_USERS_FILE, "r") as f:
-            return set(line.strip() for line in f if line.strip())
-    return set()
+            users.update(line.strip() for line in f if line.strip())
+    return users
 
 def dl_save_user(user_id):
     uid = str(user_id)
-    users = dl_load_users()
-    if uid not in users:
+    if int(uid) in DL_PRE_USERS:
+        return
+    saved = set()
+    if os.path.exists(DL_USERS_FILE):
+        with open(DL_USERS_FILE, "r") as f:
+            saved = set(line.strip() for line in f if line.strip())
+    if uid not in saved:
         with open(DL_USERS_FILE, "a") as f:
             f.write(f"{uid}\n")
 
