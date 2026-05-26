@@ -8,11 +8,6 @@ import os
 import json
 import subprocess
 try:
-    from fpdf import FPDF
-    FPDF_AVAILABLE = True
-except ImportError:
-    FPDF_AVAILABLE = False
-try:
     import yt_dlp
     YT_DLP_AVAILABLE = True
 except ImportError:
@@ -53,7 +48,8 @@ TRUSTED_USERS = {
 }
 GROUP_LINK       = "https://t.me/FalconsofIraq"
 
-DOWNLOADER_TOKEN = os.environ.get('DOWNLOADER_TOKEN', '8266072398:AAHO8y2Vd-i-3h9MQbx_i2ui2mMl6X9RRcY')
+DOWNLOADER_TOKEN   = os.environ.get('DOWNLOADER_TOKEN',   '8266072398:AAHO8y2Vd-i-3h9MQbx_i2ui2mMl6X9RRcY')
+DEEP_IMAGE_API_KEY = os.environ.get('DEEP_IMAGE_API_KEY', '1d7816c0-58cf-11f1-93af-11bef8d5097d')   # ← ضع مفتاحك من deep-image.ai
 
 # ═══════════════════════════════════════
 # 🔞 Sightengine — كشف الصور الإباحية
@@ -124,6 +120,7 @@ pending_admin   = {}
 pending_video   = {}
 pending_mention = {}
 glitch_sessions = {}
+pending_gs      = {}   # {user_id: 'pdf' | 'enhance'}  — انتظار إدخال المستخدم للخدمات العامة
 
 # ═══════════════════════════════════════
 # 📋 حفظ المجموعات تلقائياً
@@ -490,6 +487,232 @@ def get_mastercard_menu():
     )
     return markup
 
+def get_general_services_menu():
+    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="gs_pdf"),
+        telebot.types.InlineKeyboardButton("🖼 تحسين الصور",              callback_data="gs_enhance"),
+        telebot.types.InlineKeyboardButton("📱 لدي مشكلة بالتطبيقات",    callback_data="gs_apps"),
+    )
+    return markup
+
+def get_apps_problem_menu():
+    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        telebot.types.InlineKeyboardButton("🚖 مشكلة Uber",  callback_data="menu_uber"),
+        telebot.types.InlineKeyboardButton("🟢 مشكلة Baly",  callback_data="menu_baly"),
+        telebot.types.InlineKeyboardButton("🟡 مشكلة Oper",  callback_data="menu_oper"),
+        telebot.types.InlineKeyboardButton("🔙 رجوع",        callback_data="gs_back"),
+    )
+    return markup
+
+# ═══════════════════════════════════════
+# 📄 PDF — تحويل النص إلى مستند
+# ═══════════════════════════════════════
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    REPORTLAB_OK = True
+except ImportError:
+    REPORTLAB_OK = False
+    print("⚠️ reportlab غير مثبت — خدمة PDF معطلة")
+
+def _make_pdf(text: str, out_path: str) -> bool:
+    """تحويل نص عربي إلى PDF احترافي بدون لوغو"""
+    if not REPORTLAB_OK:
+        return False
+    try:
+        # ── خط عربي (Amiri) ──
+        FONT_PATH = "/home/claude/Amiri-Regular.ttf"
+        FONT_NAME = "Amiri"
+        if not os.path.exists(FONT_PATH):
+            import urllib.request
+            urllib.request.urlretrieve(
+                "https://github.com/aliftype/amiri/releases/download/1.000/Amiri-1.000.zip",
+                "/home/claude/amiri.zip"
+            )
+            import zipfile
+            with zipfile.ZipFile("/home/claude/amiri.zip") as z:
+                for n in z.namelist():
+                    if "Amiri-Regular.ttf" in n:
+                        with z.open(n) as src, open(FONT_PATH, "wb") as dst:
+                            dst.write(src.read())
+                        break
+        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH))
+
+        doc = SimpleDocTemplate(
+            out_path,
+            pagesize=A4,
+            rightMargin=2*cm, leftMargin=2*cm,
+            topMargin=2.5*cm, bottomMargin=2*cm
+        )
+
+        GOLD   = colors.HexColor("#C8A84B")
+        DARK   = colors.HexColor("#1A1A2E")
+
+        styles = getSampleStyleSheet()
+        body_style = ParagraphStyle(
+            "ArabicBody",
+            fontName=FONT_NAME,
+            fontSize=13,
+            leading=22,
+            alignment=TA_RIGHT,
+            textColor=DARK,
+            spaceAfter=8,
+        )
+        header_style = ParagraphStyle(
+            "ArabicHeader",
+            fontName=FONT_NAME,
+            fontSize=11,
+            alignment=TA_RIGHT,
+            textColor=GOLD,
+        )
+
+        story = []
+        # شريط علوي ذهبي
+        from reportlab.platypus import HRFlowable
+        story.append(HRFlowable(width="100%", thickness=3, color=GOLD, spaceAfter=10))
+        story.append(Paragraph("🦅 صقور العراق", header_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=GOLD, spaceAfter=18))
+
+        # النص — كل سطر فقرة منفصلة للعربي
+        for line in text.splitlines():
+            line = line.strip()
+            if line:
+                story.append(Paragraph(line, body_style))
+            else:
+                story.append(Spacer(1, 8))
+
+        story.append(Spacer(1, 20))
+        story.append(HRFlowable(width="100%", thickness=1, color=GOLD))
+
+        doc.build(story)
+        return True
+    except Exception as e:
+        print(f"PDF error: {e}")
+        return False
+
+def generate_pdf_and_send(chat_id, message_id, text):
+    """دالة تعمل في thread — تولّد PDF وترسله"""
+    try:
+        bot.send_chat_action(chat_id, 'upload_document')
+        out = f"/home/claude/doc_{chat_id}_{int(time.time())}.pdf"
+        ok = _make_pdf(text, out)
+        if ok and os.path.exists(out):
+            with open(out, "rb") as f:
+                bot.send_document(
+                    chat_id, f,
+                    caption="📄 ملفك جاهز — صقور العراق 🦅",
+                    reply_to_message_id=message_id
+                )
+            os.remove(out)
+        else:
+            bot.send_message(chat_id, "⚠️ حدث خطأ في إنشاء الـ PDF، حاول مجدداً.",
+                             reply_to_message_id=message_id)
+    except Exception as e:
+        print(f"generate_pdf error: {e}")
+        bot.send_message(chat_id, "⚠️ فشل إنشاء الـ PDF.")
+
+# ═══════════════════════════════════════
+# 🖼 تحسين الصور — Deep-Image.ai API
+# ═══════════════════════════════════════
+def upscale_and_send(chat_id, message_id, file_id):
+    """تحميل الصورة → base64 → deep-image.ai → إعادة الصورة المحسّنة"""
+    import base64
+    try:
+        bot.send_chat_action(chat_id, 'upload_photo')
+
+        # ١. فحص المفتاح
+        if not DEEP_IMAGE_API_KEY:
+            bot.send_message(chat_id,
+                "⚠️ مفتاح API لتحسين الصور غير مضبوط.\n"
+                "أضف DEEP_IMAGE_API_KEY في متغيرات Railway.",
+                reply_to_message_id=message_id)
+            return
+
+        # ٢. تحميل الصورة من تيليغرام وتحويلها base64
+        file_info  = bot.get_file(file_id)
+        img_bytes  = bot.download_file(file_info.file_path)
+        b64_image  = base64.b64encode(img_bytes).decode("utf-8")
+
+        # ٣. إرسال JSON لـ Deep-Image.ai  (header: X-API-KEY)
+        payload = {
+            "url":          f"data:image/jpeg;base64,{b64_image}",
+            "width":        "200%",
+            "height":       "200%",
+            "enhancements": ["denoise", "deblur"]
+        }
+        resp = requests.post(
+            "https://deep-image.ai/rest_api/process",
+            headers={
+                "X-API-KEY":    DEEP_IMAGE_API_KEY,
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=90
+        )
+
+        data = resp.json()
+        print(f"deep-image response: {resp.status_code} — {data}")
+
+        # ٤. فحص النتيجة (sync أو async)
+        if resp.status_code == 200 and data.get("status") == "complete":
+            result_url = data.get("result_url")
+        else:
+            job_id = data.get("job") or data.get("id")
+            if job_id:
+                result_url = _poll_deep_image(job_id)
+            else:
+                result_url = None
+
+        if not result_url:
+            err = data.get("message") or data.get("error") or "خطأ غير معروف"
+            bot.send_message(chat_id,
+                f"⚠️ فشل التحسين: {err}",
+                reply_to_message_id=message_id)
+            return
+
+        # ٥. تحميل الصورة المحسّنة وإرسالها
+        img_resp = requests.get(result_url, timeout=60)
+        out_path = f"/tmp/enhanced_{chat_id}_{int(time.time())}.jpg"
+        with open(out_path, "wb") as f:
+            f.write(img_resp.content)
+
+        with open(out_path, "rb") as f:
+            bot.send_photo(
+                chat_id, f,
+                caption="🖼 صورتك بعد التحسين ×2 — صقور العراق 🦅",
+                reply_to_message_id=message_id
+            )
+        os.remove(out_path)
+
+    except Exception as e:
+        print(f"upscale error: {e}")
+        bot.send_message(chat_id, "⚠️ حدث خطأ أثناء تحسين الصورة، حاول مجدداً.")
+
+def _poll_deep_image(job_id: str, retries=10, wait=4) -> str | None:
+    """polling لانتظار نتيجة Deep-Image async"""
+    for _ in range(retries):
+        time.sleep(wait)
+        try:
+            r = requests.get(
+                f"https://deep-image.ai/rest_api/result/{job_id}",
+                headers={"X-API-KEY": DEEP_IMAGE_API_KEY},
+                timeout=30
+            )
+            d = r.json()
+            if d.get("status") == "complete":
+                return d.get("result_url")
+        except:
+            pass
+    return None
+
 def get_assign_buttons():
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     for key, label in BUTTON_KEYS.items():
@@ -585,6 +808,67 @@ def handle_callbacks(call):
             print(f"glitch_fixed error: {e}")
         return
 
+    # ══════════════════════════════════════
+    # 🛠 الخدمات العامة — callbacks
+    # ══════════════════════════════════════
+
+    if data == "gs_back":
+        pending_gs.pop(user_id, None)
+        try:
+            bot.edit_message_text(
+                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
+                chat_id, call.message.message_id,
+                reply_markup=get_general_services_menu()
+            )
+        except: pass
+        bot.answer_callback_query(call.id)
+        return
+
+    if data == "gs_pdf":
+        pending_gs[user_id] = "pdf"
+        try:
+            bot.edit_message_text(
+                "📄 *تحويل النص إلى مستند PDF*\n\n"
+                "أرسل النص الذي تريد تحويله وسأرسله لك كملف PDF احترافي ✅",
+                chat_id, call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=telebot.types.InlineKeyboardMarkup().add(
+                    telebot.types.InlineKeyboardButton("❌ إلغاء", callback_data="gs_back")
+                )
+            )
+        except: pass
+        bot.answer_callback_query(call.id)
+        return
+
+    if data == "gs_enhance":
+        pending_gs[user_id] = "enhance"
+        try:
+            bot.edit_message_text(
+                "🖼 *تحسين الصور*\n\n"
+                "أرسل الصورة التي تريد تحسينها وسأعيدها إليك بجودة أعلى ✅",
+                chat_id, call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=telebot.types.InlineKeyboardMarkup().add(
+                    telebot.types.InlineKeyboardButton("❌ إلغاء", callback_data="gs_back")
+                )
+            )
+        except: pass
+        bot.answer_callback_query(call.id)
+        return
+
+    if data == "gs_apps":
+        pending_gs.pop(user_id, None)
+        try:
+            bot.edit_message_text(
+                "📱 *مشكلة بالتطبيقات*\n\nاختر التطبيق الذي تواجه فيه مشكلة 👇",
+                chat_id, call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=get_apps_problem_menu()
+            )
+        except: pass
+        bot.answer_callback_query(call.id)
+        return
+
     if data == "menu_uber":
         try: bot.edit_message_reply_markup(chat_id, call.message.message_id, reply_markup=get_uber_menu())
         except: pass
@@ -612,24 +896,18 @@ def handle_callbacks(call):
     if data == "menu_gas":
         try: bot.delete_message(chat_id, call.message.message_id)
         except: pass
-        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
         try:
-            _bot_info = bot.get_me()
-            _bot_username = _bot_info.username
+            me = bot.get_me()
+            services_url = f"https://t.me/{me.username}?start=general_services"
         except:
-            _bot_username = None
+            services_url = GROUP_LINK
+        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
-            telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
-            telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
+            telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش",  url=ZAIN_CASH_AGENTS_URL),
+            telebot.types.InlineKeyboardButton("🏪 كشك",             url=KIOSK_URL),
+            telebot.types.InlineKeyboardButton("⛽ محطات الغاز",     url=GAS_STATION_URL),
+            telebot.types.InlineKeyboardButton("🛠 خدمات عامة",      url=services_url),
         )
-        if _bot_username:
-            markup.add(
-                telebot.types.InlineKeyboardButton(
-                    "🛠 خدمات عامة",
-                    url=f"https://t.me/{_bot_username}?start=services"
-                )
-            )
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_markup=markup)
         except Exception as e:
@@ -821,79 +1099,21 @@ def handle_callbacks(call):
         bot.answer_callback_query(call.id)
         return
 
-    # ═══════════════════════════════════════
-    # 🛠 خدمات عامة — Callbacks
-    # ═══════════════════════════════════════
-
-    if data == "srv_pdf":
-        bot.answer_callback_query(call.id)
-        try: bot.delete_message(chat_id, call.message.message_id)
-        except: pass
-        bot.send_message(
-            chat_id,
-            "📄 أرسل لي النص الذي تريد تحويله إلى PDF\n"
-            "وسأرسله لك كملف جاهز للتحميل 📥"
-        )
-        pending_admin[user_id] = {'action': 'make_pdf'}
-        return
-
-    if data == "srv_img":
-        bot.answer_callback_query(call.id, "🚧 خدمة تحسين الصور قادمة قريباً!", show_alert=True)
-        return
-
-    if data == "srv_apps":
-        bot.answer_callback_query(call.id)
-        try:
-            bot.edit_message_text(
-                "🔧 اختر التطبيق الذي تواجه فيه مشكلة:",
-                chat_id, call.message.message_id,
-                reply_markup=get_apps_menu()
-            )
-        except:
-            bot.send_message(chat_id, "🔧 اختر التطبيق:", reply_markup=get_apps_menu())
-        return
-
-    if data == "srv_back":
-        bot.answer_callback_query(call.id)
-        try:
-            bot.edit_message_text(
-                "🦅 خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-                chat_id, call.message.message_id,
-                reply_markup=get_services_menu()
-            )
-        except:
-            pass
-        return
-
     bot.answer_callback_query(call.id)
+
+
 # ═══════════════════════════════════════
-
-def get_services_menu():
-    """قائمة الخدمات العامة في الخاص"""
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="srv_pdf"),
-        telebot.types.InlineKeyboardButton("🖼 تحسين الصور",               callback_data="srv_img"),
-        telebot.types.InlineKeyboardButton("🔧 مشكلة بالتطبيقات",         callback_data="srv_apps"),
-    )
-    return markup
-
-def get_apps_menu():
-    """قائمة مشكلة التطبيقات — أزرار Uber/Baly/Oper"""
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("🚖 حول Uber", callback_data="menu_uber"),
-        telebot.types.InlineKeyboardButton("🟢 حول Baly", callback_data="menu_baly"),
-        telebot.types.InlineKeyboardButton("🟡 حول Oper", callback_data="menu_oper"),
-        telebot.types.InlineKeyboardButton("🔙 رجوع",     callback_data="srv_back"),
-    )
-    return markup
-
+# ⭐ /start في الخاص
+# ═══════════════════════════════════════
 
 @bot.message_handler(commands=['start'], func=lambda m: m.chat.type == 'private')
 def start_command(message):
     user_id    = message.from_user.id
     first_name = message.from_user.first_name or "أخي"
+
+    # ── فحص deep link ──
+    args    = message.text.split() if message.text else []
+    payload = args[1] if len(args) > 1 else ""
 
     if user_id == OWNER_ID:
         bot.send_message(message.chat.id, '⚙️ لوحة الإدارة - اختر ما تريد تعديله:',
@@ -907,14 +1127,12 @@ def start_command(message):
         bot.send_message(message.chat.id, '📢 لوحة التنبيهات:', reply_markup=markup)
         return
 
-    # ✅ جاء من زر "خدمات عامة" في المجموعة
-    args = message.text.split()
-    if len(args) > 1 and args[1] == 'services':
+    # ── زر خدمات عامة ──
+    if payload == "general_services":
         bot.send_message(
             message.chat.id,
-            f"🦅 أهلاً وسهلاً بك في خدمات صقور العراق {first_name}!\n\n"
-            f"اختر الخدمة المطلوبة 👇",
-            reply_markup=get_services_menu()
+            "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
+            reply_markup=get_general_services_menu()
         )
         return
 
@@ -1051,35 +1269,6 @@ def handle_admin_input(message):
         bot.reply_to(message, f"✅ تم إرسال التنبيه إلى {success} مجموعة!")
         return
 
-    if action == 'make_pdf' and message.content_type == 'text':
-        text_content = message.text.strip()
-        if len(text_content) < 10:
-            bot.reply_to(message, "⚠️ النص قصير جداً، أرسل نصاً أطول.")
-            return
-        status_msg = bot.reply_to(message, "⏳ جاري إنشاء ملف PDF...")
-        pdf_path = f"doc_{message.from_user.id}_{int(time.time())}.pdf"
-        success  = create_pdf_from_text(text_content, pdf_path)
-        if success and os.path.exists(pdf_path):
-            try:
-                with open(pdf_path, 'rb') as f:
-                    bot.send_document(
-                        message.chat.id, f,
-                        caption="📄 مستندك جاهز! 🦅\n\nصقور العراق 🦅",
-                        visible_file_name="مستند_صقور_العراق.pdf"
-                    )
-                try: bot.delete_message(message.chat.id, status_msg.message_id)
-                except: pass
-            except Exception as e:
-                try: bot.edit_message_text(f"⚠️ خطأ في إرسال الملف: {e}", message.chat.id, status_msg.message_id)
-                except: pass
-            finally:
-                try: os.remove(pdf_path)
-                except: pass
-        else:
-            try: bot.edit_message_text("⚠️ فشل إنشاء الملف، حاول مجدداً.", message.chat.id, status_msg.message_id)
-            except: pass
-        return
-
     bot.reply_to(message, "⚠️ نوع غير صحيح، حاول مجدداً من /admin")
 
 
@@ -1110,6 +1299,47 @@ def handle_private_video(message):
 # ═══════════════════════════════════════
 # خاص: رسائل الأعضاء العاديين
 # ═══════════════════════════════════════
+
+@bot.message_handler(content_types=['text'],
+                     func=lambda m: m.chat.type == 'private'
+                                    and m.from_user.id != OWNER_ID
+                                    and m.from_user.id not in ALERT_ADMINS
+                                    and m.from_user.id in pending_gs
+                                    and pending_gs[m.from_user.id] == 'pdf')
+def handle_gs_pdf_text(message):
+    user_id = message.from_user.id
+    pending_gs.pop(user_id, None)
+    text = message.text.strip()
+    if not text:
+        bot.reply_to(message, "⚠️ الرسالة فارغة، أرسل النص مجدداً.")
+        return
+    wait_msg = bot.reply_to(message, "⏳ جاري إنشاء الملف...")
+    threading.Thread(
+        target=generate_pdf_and_send,
+        args=(message.chat.id, message.message_id, text),
+        daemon=True
+    ).start()
+    try: bot.delete_message(message.chat.id, wait_msg.message_id)
+    except: pass
+
+
+@bot.message_handler(content_types=['photo'],
+                     func=lambda m: m.chat.type == 'private'
+                                    and m.from_user.id != OWNER_ID
+                                    and m.from_user.id not in ALERT_ADMINS
+                                    and m.from_user.id in pending_gs
+                                    and pending_gs[m.from_user.id] == 'enhance')
+def handle_gs_enhance_photo(message):
+    user_id = message.from_user.id
+    pending_gs.pop(user_id, None)
+    file_id = message.photo[-1].file_id
+    bot.reply_to(message, "⏳ جاري تحسين الصورة، انتظر قليلاً...")
+    threading.Thread(
+        target=upscale_and_send,
+        args=(message.chat.id, message.message_id, file_id),
+        daemon=True
+    ).start()
+
 
 @bot.message_handler(content_types=['text'],
                      func=lambda m: m.chat.type == 'private' and m.from_user.id != OWNER_ID
@@ -1259,48 +1489,6 @@ def download_and_send_video(bot_instance, chat_id, reply_to_id, url):
             if f.startswith(filename_base):
                 try: os.remove(f)
                 except: pass
-
-
-# ═══════════════════════════════════════
-# 📄 دالة إنشاء PDF من النص
-# ═══════════════════════════════════════
-
-def create_pdf_from_text(text, output_path):
-    """تحويل نص عربي إلى ملف PDF"""
-    try:
-        if not FPDF_AVAILABLE:
-            print("⚠️ مكتبة fpdf2 غير مثبتة")
-            return False
-
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.set_right_margin(15)
-        pdf.set_left_margin(15)
-
-        # محاولة تشكيل النص العربي بشكل صحيح
-        try:
-            import arabic_reshaper
-            from bidi.algorithm import get_display
-            text_display = get_display(arabic_reshaper.reshape(text))
-        except ImportError:
-            text_display = text
-
-        pdf.set_font("Helvetica", size=14)
-
-        lines = text_display.split('\n')
-        for line in lines:
-            if line.strip() == '':
-                pdf.ln(5)
-            else:
-                # تقسيم السطور الطويلة
-                pdf.multi_cell(0, 8, line, align='R')
-
-        pdf.output(output_path)
-        return True
-    except Exception as e:
-        print(f"❌ خطأ في إنشاء PDF: {e}")
-        return False
 
 
 # ═══════════════════════════════════════
@@ -1545,23 +1733,11 @@ def handle_hero_logic(message):
         try: bot.delete_message(chat_id, message.message_id)
         except: pass
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-        try:
-            _bot_info = bot.get_me()
-            _bot_username = _bot_info.username
-        except:
-            _bot_username = None
         markup.add(
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
             telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
             telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
         )
-        if _bot_username:
-            markup.add(
-                telebot.types.InlineKeyboardButton(
-                    "🛠 خدمات عامة",
-                    url=f"https://t.me/{_bot_username}?start=services"
-                )
-            )
         target_msg_id = message.reply_to_message.message_id if message.reply_to_message else None
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_to_message_id=target_msg_id, reply_markup=markup)
