@@ -110,10 +110,6 @@ def firebase_delete_request(chat_id):
     _memory_requests.pop(chat_id, None)
 
 bot = telebot.TeleBot(BOT_TOKEN)
-try:
-    BOT_USERNAME = bot.get_me().username
-except:
-    BOT_USERNAME = ""
 DB_FILE      = "users_db.txt"
 VIDEOS_FILE  = "videos_db.json"
 BUTTONS_FILE = "buttons_db.json"
@@ -123,7 +119,6 @@ pending_admin   = {}
 pending_video   = {}
 pending_mention = {}
 glitch_sessions = {}
-pending_gs      = {}   # انتظار نص PDF من المستخدم
 
 # ═══════════════════════════════════════
 # 📋 حفظ المجموعات تلقائياً
@@ -490,139 +485,6 @@ def get_mastercard_menu():
     )
     return markup
 
-
-# ═══════════════════════════════════════
-# 🛠 الخدمات العامة
-# ═══════════════════════════════════════
-
-def get_general_services_menu():
-    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        telebot.types.InlineKeyboardButton("📄 تحويل النص إلى مستند PDF", callback_data="gs_pdf"),
-    )
-    return markup
-
-# ─── PDF بـ weasyprint ───
-try:
-    from weasyprint import HTML as WH
-    WEASYPRINT_OK = True
-except ImportError:
-    WEASYPRINT_OK = False
-    print("⚠️ weasyprint غير مثبت")
-
-def _build_pdf_html(text: str) -> str:
-    """يبني HTML احترافي بتصميم صقور العراق"""
-    lines_html = "".join(
-        f"<p>{line}</p>" if line.strip() else "<br>"
-        for line in text.splitlines()
-    )
-    return f"""<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="UTF-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    font-family: 'Cairo', 'Arial', sans-serif;
-    background: #fff;
-    color: #1a1a2e;
-    direction: rtl;
-  }}
-  .header {{
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-    padding: 28px 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }}
-  .header-title {{
-    color: #C8A84B;
-    font-size: 26px;
-    font-weight: 700;
-    letter-spacing: 1px;
-  }}
-  .header-sub {{
-    color: #ffffff88;
-    font-size: 13px;
-    margin-top: 4px;
-  }}
-  .eagle {{ font-size: 40px; }}
-  .gold-bar {{
-    height: 4px;
-    background: linear-gradient(90deg, #C8A84B, #f0d080, #C8A84B);
-  }}
-  .content {{
-    padding: 40px 50px;
-    min-height: 500px;
-  }}
-  .content p {{
-    font-size: 15px;
-    line-height: 2;
-    margin-bottom: 8px;
-    color: #1a1a2e;
-  }}
-  .footer {{
-    border-top: 2px solid #C8A84B33;
-    padding: 16px 40px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f9f7f2;
-  }}
-  .footer-text {{
-    color: #C8A84B;
-    font-size: 12px;
-    font-weight: 700;
-  }}
-  .footer-link {{
-    color: #888;
-    font-size: 11px;
-  }}
-</style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <div class="header-title">🦅 صقور العراق</div>
-      <div class="header-sub">Falcons of Iraq — خدمات السائقين</div>
-    </div>
-  </div>
-  <div class="gold-bar"></div>
-  <div class="content">
-    {lines_html}
-  </div>
-  <div class="gold-bar"></div>
-  <div class="footer">
-    <span class="footer-text">🦅 صقور العراق</span>
-    <span class="footer-link">t.me/FalconsofIraq</span>
-  </div>
-</body>
-</html>"""
-
-def generate_pdf_and_send(chat_id, message_id, text):
-    """توليد PDF وإرساله للمستخدم"""
-    try:
-        if not WEASYPRINT_OK:
-            bot.send_message(chat_id,
-                "⚠️ خدمة PDF غير متاحة حالياً، تأكد من تثبيت weasyprint على السيرفر.",
-                reply_to_message_id=message_id)
-            return
-        bot.send_chat_action(chat_id, 'upload_document')
-        html_content = _build_pdf_html(text)
-        out_path = f"/tmp/doc_{chat_id}_{int(time.time())}.pdf"
-        WH(string=html_content).write_pdf(out_path)
-        with open(out_path, "rb") as f:
-            bot.send_document(
-                chat_id, f,
-                caption="📄 ملفك جاهز — صقور العراق 🦅",
-                reply_to_message_id=message_id
-            )
-        os.remove(out_path)
-    except Exception as e:
-        print(f"PDF error: {e}")
-        bot.send_message(chat_id, "⚠️ حدث خطأ في إنشاء الـ PDF، حاول مجدداً.")
-
 def get_assign_buttons():
     markup = telebot.types.InlineKeyboardMarkup(row_width=1)
     for key, label in BUTTON_KEYS.items():
@@ -750,57 +612,11 @@ def handle_callbacks(call):
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش", url=ZAIN_CASH_AGENTS_URL),
             telebot.types.InlineKeyboardButton("🏪 كشك",            url=KIOSK_URL),
             telebot.types.InlineKeyboardButton("⛽ محطات الغاز",    url=GAS_STATION_URL),
-            telebot.types.InlineKeyboardButton("🛠 خدمات",          callback_data="menu_general_services"),
         )
         try:
             bot.send_photo(chat_id, GAS_STATION_PHOTO, reply_markup=markup)
         except Exception as e:
             print(f"خطأ في إرسال الأزرار: {e}")
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "menu_general_services":
-        uid = call.from_user.id
-        try:
-            bot.send_message(
-                uid,
-                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-                reply_markup=get_general_services_menu()
-            )
-            bot.answer_callback_query(call.id, "✅ افتح الخاص مع البوت", show_alert=False)
-        except:
-            pm_url = f"https://t.me/{BOT_USERNAME}?start=general_services" if BOT_USERNAME else GROUP_LINK
-            markup_pm = telebot.types.InlineKeyboardMarkup()
-            markup_pm.add(telebot.types.InlineKeyboardButton("🛠 افتح الخدمات", url=pm_url))
-            try:
-                bot.send_message(chat_id, "👇 اضغط لفتح الخدمات في الخاص:", reply_markup=markup_pm)
-            except: pass
-            bot.answer_callback_query(call.id, "⚠️ افتح الخاص مع البوت أولاً", show_alert=True)
-        return
-
-    if data == "gs_pdf":
-        pending_gs[user_id] = "pdf"
-        try:
-            bot.edit_message_text(
-                "📄 أرسل النص الذي تريد تحويله إلى PDF وسأرسله لك كملف احترافي ✅",
-                chat_id, call.message.message_id,
-                reply_markup=telebot.types.InlineKeyboardMarkup().add(
-                    telebot.types.InlineKeyboardButton("❌ إلغاء", callback_data="gs_back")
-                )
-            )
-        except: pass
-        bot.answer_callback_query(call.id)
-        return
-
-    if data == "gs_back":
-        pending_gs.pop(user_id, None)
-        try:
-            bot.edit_message_text(
-                "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-                chat_id, call.message.message_id,
-                reply_markup=get_general_services_menu()
-            )
-        except: pass
         bot.answer_callback_query(call.id)
         return
 
@@ -1000,17 +816,6 @@ def start_command(message):
     user_id    = message.from_user.id
     first_name = message.from_user.first_name or "أخي"
 
-    # deep link
-    args    = message.text.split() if message.text else []
-    payload = args[1] if len(args) > 1 else ""
-    if payload == "general_services":
-        bot.send_message(
-            message.chat.id,
-            "🦅 أهلاً وسهلاً بكم في خدمات صقور العراق\n\nاختر الخدمة المطلوبة 👇",
-            reply_markup=get_general_services_menu()
-        )
-        return
-
     if user_id == OWNER_ID:
         bot.send_message(message.chat.id, '⚙️ لوحة الإدارة - اختر ما تريد تعديله:',
                          reply_markup=get_admin_panel())
@@ -1186,27 +991,6 @@ def handle_private_video(message):
 # ═══════════════════════════════════════
 # خاص: رسائل الأعضاء العاديين
 # ═══════════════════════════════════════
-
-@bot.message_handler(content_types=['text'],
-                     func=lambda m: m.chat.type == 'private'
-                                    and m.from_user.id != OWNER_ID
-                                    and m.from_user.id not in ALERT_ADMINS
-                                    and m.from_user.id in pending_gs
-                                    and pending_gs.get(m.from_user.id) == 'pdf')
-def handle_gs_pdf_text(message):
-    user_id = message.from_user.id
-    pending_gs.pop(user_id, None)
-    text = (message.text or "").strip()
-    if not text:
-        bot.reply_to(message, "⚠️ الرسالة فارغة، أرسل النص مجدداً.")
-        return
-    bot.reply_to(message, "⏳ جاري إنشاء الملف...")
-    threading.Thread(
-        target=generate_pdf_and_send,
-        args=(message.chat.id, message.message_id, text),
-        daemon=True
-    ).start()
-
 
 @bot.message_handler(content_types=['text'],
                      func=lambda m: m.chat.type == 'private' and m.from_user.id != OWNER_ID
@@ -2399,25 +2183,170 @@ def handle_new_members(message):
 
 dl_bot = telebot.TeleBot(DOWNLOADER_TOKEN)
 
+# ═══════════════════════════════════════
+# 📦 قاعدة بيانات مستخدمي بوت التحميل
+# ═══════════════════════════════════════
+
+DL_USERS_FILE = "dl_users_db.txt"
+
+def dl_load_users():
+    if os.path.exists(DL_USERS_FILE):
+        with open(DL_USERS_FILE, "r") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def dl_save_user(user_id):
+    uid = str(user_id)
+    users = dl_load_users()
+    if uid not in users:
+        with open(DL_USERS_FILE, "a") as f:
+            f.write(f"{uid}\n")
+
+# pending broadcast state للأونر في بوت التحميل
+dl_pending_broadcast = {}   # {user_id: 'waiting'}
+
+# ─── لوحة تحكم بوت التحميل (للأونر فقط) ───
+
+def get_dl_owner_panel():
+    markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+    count = len(dl_load_users())
+    markup.add(
+        telebot.types.InlineKeyboardButton(
+            f"📢 رسالة عامة  ({count} مستخدم)",
+            callback_data="dl_broadcast"
+        )
+    )
+    return markup
+
 @dl_bot.message_handler(commands=['start'])
 def dl_start(message):
-    welcome_text = (
-        "اهلا وسهلا بكم بوت صقور العراق لتحميل الفيديوهات 🦅\n\n"
-        "✅ أمن\n"
-        "✅ سريع\n"
-        "✅ بدون اعلانات\n\n"
-        "📌 المنصات المدعومة:\n"
-        "• YouTube\n"
-        "• TikTok\n"
-        "• Instagram\n"
-        "• Facebook\n\n"
-        "فقط انسخ رابط الفيديو والصقه هنا 👇\n\n"
-        "مجموعتنا على تلغرام حياكم الله " + GROUP_LINK
+    uid = message.from_user.id
+    dl_save_user(uid)
+
+    # إذا الأونر — يشوف لوحة التحكم + رسالة الترحيب
+    if uid == OWNER_ID:
+        welcome_text = (
+            "⚙️ أهلاً بك يا مالك البوت!\n\n"
+            "اهلا وسهلا بكم بوت صقور العراق لتحميل الفيديوهات 🦅\n\n"
+            "✅ أمن\n✅ سريع\n✅ بدون اعلانات\n\n"
+            "📌 المنصات المدعومة:\n"
+            "• YouTube\n• TikTok\n• Instagram\n• Facebook\n\n"
+            "فقط انسخ رابط الفيديو والصقه هنا 👇\n\n"
+            "مجموعتنا على تلغرام حياكم الله " + GROUP_LINK
+        )
+        dl_bot.send_message(uid, welcome_text, reply_markup=get_dl_owner_panel())
+    else:
+        welcome_text = (
+            "اهلا وسهلا بكم بوت صقور العراق لتحميل الفيديوهات 🦅\n\n"
+            "✅ أمن\n✅ سريع\n✅ بدون اعلانات\n\n"
+            "📌 المنصات المدعومة:\n"
+            "• YouTube\n• TikTok\n• Instagram\n• Facebook\n\n"
+            "فقط انسخ رابط الفيديو والصقه هنا 👇\n\n"
+            "مجموعتنا على تلغرام حياكم الله " + GROUP_LINK
+        )
+        dl_bot.reply_to(message, welcome_text)
+
+# ─── Callback: زر رسالة عامة ───
+
+@dl_bot.callback_query_handler(func=lambda call: call.data == "dl_broadcast")
+def dl_handle_broadcast_btn(call):
+    if call.from_user.id != OWNER_ID:
+        dl_bot.answer_callback_query(call.id, "⛔ غير مصرح", show_alert=True)
+        return
+    dl_pending_broadcast[OWNER_ID] = 'waiting'
+    dl_bot.answer_callback_query(call.id)
+    dl_bot.send_message(
+        OWNER_ID,
+        "📢 أرسل الرسالة العامة الآن:\n"
+        "• نص فقط\n"
+        "• صورة فقط\n"
+        "• صورة + تعليق\n"
+        "• فيديو\n\n"
+        "أرسل /cancel للإلغاء"
     )
-    dl_bot.reply_to(message, welcome_text)
+
+# ─── أمر الإلغاء للأونر ───
+
+@dl_bot.message_handler(commands=['cancel'], func=lambda m: m.from_user.id == OWNER_ID)
+def dl_cancel_broadcast(message):
+    if dl_pending_broadcast.pop(OWNER_ID, None):
+        dl_bot.reply_to(message, "❌ تم الإلغاء.")
+    else:
+        dl_bot.reply_to(message, "⚠️ لا يوجد شيء قيد الانتظار.")
+
+# ─── استقبال الرسالة العامة وإرسالها ───
+
+def _do_broadcast(content_type, file_id, caption_text):
+    """يرسل الرسالة لكل مستخدمي بوت التحميل في thread منفصل"""
+    users = dl_load_users()
+    sent = 0
+    failed = 0
+    for uid_str in users:
+        try:
+            uid = int(uid_str)
+            if content_type == 'text':
+                dl_bot.send_message(uid, caption_text)
+            elif content_type == 'photo':
+                dl_bot.send_photo(uid, file_id, caption=caption_text or None)
+            elif content_type == 'video':
+                dl_bot.send_video(uid, file_id, caption=caption_text or None)
+            sent += 1
+            time.sleep(0.05)   # تجنب flood
+        except Exception as e:
+            failed += 1
+            print(f"broadcast failed uid={uid_str}: {e}")
+    dl_bot.send_message(
+        OWNER_ID,
+        f"✅ اكتمل الإرسال!\n📤 أُرسل إلى: {sent}\n❌ فشل: {failed}"
+    )
+
+@dl_bot.message_handler(
+    func=lambda m: m.from_user.id == OWNER_ID and OWNER_ID in dl_pending_broadcast,
+    content_types=['text', 'photo', 'video']
+)
+def dl_receive_broadcast(message):
+    dl_pending_broadcast.pop(OWNER_ID, None)
+    uid = message.from_user.id
+
+    ctype = message.content_type
+
+    if ctype == 'text':
+        text = message.text.strip()
+        if text.startswith('/'):
+            return
+        dl_bot.reply_to(message, f"📡 جارٍ الإرسال لـ {len(dl_load_users())} مستخدم...")
+        threading.Thread(target=_do_broadcast, args=('text', None, text), daemon=True).start()
+
+    elif ctype == 'photo':
+        file_id = message.photo[-1].file_id
+        caption = message.caption or ""
+        dl_bot.reply_to(message, f"📡 جارٍ الإرسال لـ {len(dl_load_users())} مستخدم...")
+        threading.Thread(target=_do_broadcast, args=('photo', file_id, caption), daemon=True).start()
+
+    elif ctype == 'video':
+        file_id = message.video.file_id
+        caption = message.caption or ""
+        dl_bot.reply_to(message, f"📡 جارٍ الإرسال لـ {len(dl_load_users())} مستخدم...")
+        threading.Thread(target=_do_broadcast, args=('video', file_id, caption), daemon=True).start()
+
+    else:
+        dl_bot.reply_to(message, "⚠️ نوع الرسالة غير مدعوم. أرسل نصاً أو صورة أو فيديو.")
+        dl_pending_broadcast[OWNER_ID] = 'waiting'   # أعد الانتظار
+
+# ─── أمر /panel للأونر ليظهر اللوحة متى شاء ───
+
+@dl_bot.message_handler(commands=['panel'], func=lambda m: m.from_user.id == OWNER_ID)
+def dl_show_panel(message):
+    count = len(dl_load_users())
+    dl_bot.send_message(
+        OWNER_ID,
+        f"⚙️ لوحة تحكم بوت التحميل\n👥 إجمالي المستخدمين: {count}",
+        reply_markup=get_dl_owner_panel()
+    )
 
 @dl_bot.message_handler(func=lambda m: m.text and is_downloadable_url(m.text.strip()))
 def dl_download(message):
+    dl_save_user(message.from_user.id)
     threading.Thread(
         target=download_and_send_video,
         args=(dl_bot, message.chat.id, message.message_id, message.text.strip()),
@@ -2426,6 +2355,10 @@ def dl_download(message):
 
 @dl_bot.message_handler(func=lambda m: True)
 def dl_unknown(message):
+    dl_save_user(message.from_user.id)
+    # إذا الأونر ينتظر بث — لا تتجاوب هنا (المعالج أعلاه يمسكها)
+    if message.from_user.id == OWNER_ID and OWNER_ID in dl_pending_broadcast:
+        return
     dl_bot.reply_to(
         message,
         "⚠️ الرابط غير مدعوم.\nأرسل رابطاً من YouTube أو TikTok أو Instagram أو Facebook."
