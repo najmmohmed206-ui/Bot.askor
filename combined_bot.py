@@ -62,6 +62,7 @@ SIGHTENGINE_SECRET = os.environ.get('SIGHTENGINE_SECRET', 'WULHupUUetaSHwc7xRNTH
 
 WHITELIST_LINKS = [
     't.me/hawk0000000',
+    't.me/falconsofiraq',
     'youtube.com',
     'youtu.be',
     'tiktok.com',
@@ -1606,6 +1607,10 @@ def handle_hero_logic(message):
 
         caption = message.caption or ""
 
+        # ── استثناء: كابشن يحتوي رابط FalconsofIraq → لا تحذف أبداً ──
+        if 't.me/falconsofiraq' in caption.lower():
+            return
+
         # ── فحص الكابشن: @ مع كتابة أو رموز → احذف فوراً ──
         if caption.strip():
             _cap_ents = (message.caption_entities or [])
@@ -1633,15 +1638,37 @@ def handle_hero_logic(message):
                     except: pass
                     return
 
-            # هل الكابشن يحتوي رموز غير نصية مع كتابة؟
-            # إذا فيه إيموجي فقط → اتركها، إذا فيه كلام → احذف
-            cap_words = caption.split()
-            cap_word_count = len(cap_words)
-            if not is_emoji_only(caption) and cap_word_count > 0:
-                # فيه كتابة في الكابشن → احذف
-                try: bot.delete_message(chat_id, message.message_id)
-                except: pass
-                return
+            # ── فحص الروابط في الكابشن ──
+            # إذا فيه أي رابط غير FalconsofIraq → احذف فوراً
+            _cap_url_pattern = re.compile(r'(https?://\S+|www\.\S+|t\.me/\S+)', re.IGNORECASE)
+            _cap_urls = _cap_url_pattern.findall(caption)
+            if _cap_urls:
+                _caption_allowed = [
+                    't.me/falconsofiraq',
+                    'youtube.com', 'youtu.be',
+                    'tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com',
+                    'instagram.com',
+                ]
+                _all_allowed = all(
+                    any(allowed in u.lower() for allowed in _caption_allowed)
+                    for u in _cap_urls
+                )
+                if not _all_allowed:
+                    try: bot.delete_message(chat_id, message.message_id)
+                    except: pass
+                    return
+                else:
+                    # روابط مسموحة → لا تفحص الكتابة، اتركها
+                    pass
+            else:
+                # لا توجد روابط — فحص الكتابة العادية
+                # هل الكابشن يحتوي كتابة؟ إذا فيه إيموجي فقط → اتركها، إذا فيه كلام → احذف
+                cap_words = caption.split()
+                cap_word_count = len(cap_words)
+                if not is_emoji_only(caption) and cap_word_count > 0:
+                    try: bot.delete_message(chat_id, message.message_id)
+                    except: pass
+                    return
 
         if message.content_type == 'photo':
             threading.Thread(
