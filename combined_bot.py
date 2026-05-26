@@ -110,6 +110,10 @@ def firebase_delete_request(chat_id):
     _memory_requests.pop(chat_id, None)
 
 bot = telebot.TeleBot(BOT_TOKEN)
+try:
+    BOT_USERNAME = bot.get_me().username
+except:
+    BOT_USERNAME = ""
 DB_FILE      = "users_db.txt"
 VIDEOS_FILE  = "videos_db.json"
 BUTTONS_FILE = "buttons_db.json"
@@ -787,11 +791,7 @@ def handle_callbacks(call):
     if data == "menu_gas":
         try: bot.delete_message(chat_id, call.message.message_id)
         except: pass
-        try:
-            me = bot.get_me()
-            services_url = f"https://t.me/{me.username}?start=general_services"
-        except:
-            services_url = GROUP_LINK
+        services_url = f"https://t.me/{BOT_USERNAME}?start=general_services" if BOT_USERNAME else GROUP_LINK
         markup = telebot.types.InlineKeyboardMarkup(row_width=1)
         markup.add(
             telebot.types.InlineKeyboardButton("🏦 وكلاء زين كاش",  url=ZAIN_CASH_AGENTS_URL),
