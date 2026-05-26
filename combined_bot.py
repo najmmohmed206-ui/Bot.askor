@@ -1534,6 +1534,26 @@ def handle_hero_logic(message):
          getattr(getattr(_fwd_origin, 'chat', None), 'username', None) != 'hawk0000000')
     )
     if _is_channel_fwd:
+        # فحص الكابشن: إذا فيه رابط غير مسموح → احذف فوراً بغض النظر عن الأدمن
+        _fwd_caption = message.caption or message.text or ""
+        _fwd_url_pattern = re.compile(r'(https?://\S+|www\.\S+|t\.me/\S+)', re.IGNORECASE)
+        _fwd_urls = _fwd_url_pattern.findall(_fwd_caption)
+        if _fwd_urls:
+            _fwd_caption_allowed = [
+                't.me/falconsofiraq',
+                't.me/hawk0000000',
+                'youtube.com', 'youtu.be',
+                'tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com',
+                'instagram.com',
+            ]
+            _fwd_all_allowed = all(
+                any(allowed in u.lower() for allowed in _fwd_caption_allowed)
+                for u in _fwd_urls
+            )
+            if not _fwd_all_allowed:
+                try: bot.delete_message(chat_id, message.message_id)
+                except: pass
+                return
         if not is_admin(chat_id, user_id):
             if text.strip():
                 threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 600)).start()
