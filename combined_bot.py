@@ -169,15 +169,46 @@ BUTTON_KEYS = {
 # دوال قاعدة البيانات
 # ═══════════════════════════════════════
 
+REPLIED_EXPIRE_SECONDS = 86400  # 24 ساعة
+
 def load_users():
+    """يحمّل الأعضاء مع timestamp — يتجاهل من انتهت صلاحيتهم (24 ساعة)"""
+    users = {}
+    now = int(time.time())
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            return {line.strip(): True for line in f.readlines()}
-    return {}
+        try:
+            with open(DB_FILE, "r") as f:
+                data = json.load(f)
+            for uid, ts in data.items():
+                if now - ts < REPLIED_EXPIRE_SECONDS:
+                    users[uid] = ts
+        except Exception:
+            # ملف قديم بصيغة نصية — تجاهله وابدأ من جديد
+            pass
+    return users
+
+def save_users():
+    """يحفظ كل الأعضاء النشطين مع timestamp"""
+    with open(DB_FILE, "w") as f:
+        json.dump(replied_users, f)
 
 def save_user(user_id):
-    with open(DB_FILE, "a") as f:
-        f.write(f"{user_id}\n")
+    """يضيف عضو جديد أو يجدد وقته"""
+    replied_users[str(user_id)] = int(time.time())
+    save_users()
+
+def is_user_replied(user_id_str):
+    """هل الشخص مسجّل وما انتهت صلاحيته؟"""
+    now = int(time.time())
+    ts = replied_users.get(user_id_str)
+    if ts is None:
+        return False
+    if now - ts >= REPLIED_EXPIRE_SECONDS:
+        # انتهت صلاحيته — احذفه
+        del replied_users[user_id_str]
+        save_users()
+        return False
+    return True
 
 def load_videos():
     if os.path.exists(VIDEOS_FILE):
@@ -216,7 +247,21 @@ def save_buttons(b):
     with open(BUTTONS_FILE, "w", encoding="utf-8") as f:
         json.dump(b, f, ensure_ascii=False, indent=2)
 
-replied_users = load_users()
+replied_users = load_users()  # dict: {user_id_str: timestamp}
+
+def _cleanup_expired_users():
+    """تنظيف دوري كل ساعة — يحذف من انتهت صلاحية 24 ساعة"""
+    while True:
+        time.sleep(3600)
+        now = int(time.time())
+        expired = [uid for uid, ts in list(replied_users.items()) if now - ts >= REPLIED_EXPIRE_SECONDS]
+        for uid in expired:
+            replied_users.pop(uid, None)
+        if expired:
+            save_users()
+            print(f"🧹 تم تنظيف {len(expired)} عضو منتهي الصلاحية")
+
+threading.Thread(target=_cleanup_expired_users, daemon=True).start()
 videos_db     = load_videos()
 
 # ═══════════════════════════════════════
@@ -238,11 +283,8 @@ PRE_REPLIED = [
     643244393,  5178534518, 1116833219, 1215608520, 7725269843,
 ]
 
-for uid in PRE_REPLIED:
-    uid_str = str(uid)
-    if uid_str not in replied_users:
-        replied_users[uid_str] = True
-        save_user(uid_str)
+# PRE_REPLIED: لا نضيفهم بعد الآن — سيُعامَلون كأعضاء جدد بعد 24 ساعة
+# (تم إلغاء الإضافة التلقائية لتطبيق منطق الانتهاء)
 
 # ═══════════════════════════════════════
 # 🎬 الفيديوهات الثابتة
@@ -1554,14 +1596,22 @@ def handle_hero_logic(message):
                 try: bot.delete_message(chat_id, message.message_id)
                 except: pass
                 return
+        # الكروب المستثنى: الأدمن محميون فيه من الحذف
+        EXEMPT_GROUP = -1003746150788
         if not is_admin(chat_id, user_id):
             if text.strip():
                 threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 600)).start()
             return
         else:
+            # أدمن في كروب forward — احذف إلا في الكروب المستثنى
+            if chat_id != EXEMPT_GROUP:
+                if text.strip():
+                    threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 600)).start()
             return
 
-    if is_admin(chat_id, user_id):
+    # الكروب المستثنى: الأدمن محميون من كل قواعد الحذف
+    EXEMPT_GROUP = -1003746150788
+    if is_admin(chat_id, user_id) and chat_id == EXEMPT_GROUP:
         return
 
     if is_adult_content(text):
@@ -1713,8 +1763,7 @@ def handle_hero_logic(message):
             return
         if word_count >= 7:
             # إذا كان جديداً (أول رسالة) → أرسل البصمة مع تاك أولاً ثم احذف الرسالة
-            if user_id_str not in replied_users:
-                replied_users[user_id_str] = True
+            if not is_user_replied(user_id_str):
                 save_user(user_id_str)
                 _u = message.from_user
                 if _u.username:
@@ -1741,11 +1790,10 @@ def handle_hero_logic(message):
                 try: bot.delete_message(chat_id, message.message_id)
                 except: pass
             return
-        if user_id_str in replied_users:
+        if is_user_replied(user_id_str):
             try: bot.delete_message(chat_id, message.message_id)
             except: pass
             return
-        replied_users[user_id_str] = True
         save_user(user_id_str)
         # أقل من 7 كلمات → رد بالبصمة مع تاك، تحذف بعد 15 دقيقة
         _u = message.from_user
