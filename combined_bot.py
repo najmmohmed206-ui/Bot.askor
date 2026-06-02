@@ -2545,7 +2545,7 @@ def kick_existing_bots():
         except Exception as e:
             print(f"⚠️ خطأ في فحص المجموعة {chat_id}: {e}")
 
-if __name__ == "__main__":
+if __name__ == "__main__"
     print("✅ البوت الرئيسي يعمل...")
     resolve_default_groups()
     threading.Thread(target=kick_existing_bots, daemon=True).start()
