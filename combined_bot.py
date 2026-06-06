@@ -161,6 +161,7 @@ BUTTON_KEYS = {
     "uber_support":     "🆘 دعم Uber داخل التطبيق",
     "uber_appointment": "📅 حجز موعد اوبر",
     "uber_trips":       "📋 معرفة تفاصيل الرحلات",
+    "uber_waze":        "🗺️ ربط Uber بويز",
     "baly_pay":         "💳 طريقة تسديد Baly",
     "oper_pay":         "💳 طريقة تسديد Oper",
 }
@@ -240,6 +241,7 @@ def load_buttons():
             {"key": "uber_support",     "label": "🆘 دعم Uber داخل التطبيق",   "type": "video"},
             {"key": "uber_appointment", "label": "📅 حجز موعد اوبر",           "type": "video"},
             {"key": "uber_trips",       "label": "📋 معرفة تفاصيل الرحلات",    "type": "video"},
+            {"key": "uber_waze",        "label": "🗺️ ربط Uber بويز",            "type": "video"},
         ]
     }
 
@@ -302,6 +304,7 @@ FIXED_VIDEOS = {
     "uber_pay":         "BAACAgIAAxkBAAID5mmlkRH-iaBVRCS_kW-R7MSCU_9RAAITjwAC5XsQSVw4Yd0kWt23OgQ",
     "uber_appointment": "BAACAgIAAxkBAAIJhmnvG7XbDdID4rqFYEOLQLRV5cdBAAKRmAACbMN4S6NFtPowBL9COwQ",
     "uber_trips":       "BAACAgIAAxkBAAIJiWnvHCc5cl3738RZDWOFjV6DYuTFAAKVmAACbMN4S2jihbimI3NEOwQ",
+    "uber_waze":        "BAACAgIAAx0CbT-m8QABBxfaaiLNFd37xU7DGNeB398pIgAB_UKXAAJnjQACypfQS12eXaq8fvGTOwQ",
 }
 
 for key, file_id in FIXED_VIDEOS.items():
@@ -1570,43 +1573,29 @@ def handle_hero_logic(message):
 
     _fwd_chat   = message.forward_from_chat
     _fwd_origin = getattr(message, 'forward_origin', None)
-    _is_channel_fwd = (
-        (_fwd_chat and _fwd_chat.type == 'channel' and _fwd_chat.username != 'hawk0000000') or
-        (_fwd_origin and getattr(_fwd_origin, 'type', None) == 'channel' and
-         getattr(getattr(_fwd_origin, 'chat', None), 'username', None) != 'hawk0000000')
-    )
+
+    # استخرج username القناة المحولة منها
+    _fwd_channel_username = None
+    if _fwd_chat and _fwd_chat.type == 'channel':
+        _fwd_channel_username = (_fwd_chat.username or '').lower()
+    elif _fwd_origin and getattr(_fwd_origin, 'type', None) == 'channel':
+        _fwd_channel_username = getattr(getattr(_fwd_origin, 'chat', None), 'username', None)
+        if _fwd_channel_username:
+            _fwd_channel_username = _fwd_channel_username.lower()
+
+    # قائمة القنوات المسموحة (القائمة البيضاء)
+    _ALLOWED_CHANNELS = {'hawk0000000', 'falconsofiraq'}
+
+    _is_channel_fwd = _fwd_channel_username is not None
+
     if _is_channel_fwd:
-        # فحص الكابشن: إذا فيه رابط غير مسموح → احذف فوراً بغض النظر عن الأدمن
-        _fwd_caption = message.caption or message.text or ""
-        _fwd_url_pattern = re.compile(r'(https?://\S+|www\.\S+|t\.me/\S+)', re.IGNORECASE)
-        _fwd_urls = _fwd_url_pattern.findall(_fwd_caption)
-        if _fwd_urls:
-            _fwd_caption_allowed = [
-                't.me/falconsofiraq',
-                't.me/hawk0000000',
-                'youtube.com', 'youtu.be',
-                'tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com',
-                'instagram.com',
-            ]
-            _fwd_all_allowed = all(
-                any(allowed in u.lower() for allowed in _fwd_caption_allowed)
-                for u in _fwd_urls
-            )
-            if not _fwd_all_allowed:
-                try: bot.delete_message(chat_id, message.message_id)
-                except: pass
-                return
-        # الكروب المستثنى: الأدمن محميون فيه من الحذف
-        EXEMPT_GROUP = -1003746150788
-        if not is_admin(chat_id, user_id):
-            if text.strip():
-                threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 600)).start()
-            return
+        # إذا القناة في القائمة البيضاء → اتركها
+        if _fwd_channel_username in _ALLOWED_CHANNELS:
+            pass  # مسموح، تكمل الفحوص العادية
         else:
-            # أدمن في كروب forward — احذف إلا في الكروب المستثنى
-            if chat_id != EXEMPT_GROUP:
-                if text.strip():
-                    threading.Thread(target=delete_message_after, args=(chat_id, message.message_id, 600)).start()
+            # أي قناة ثانية → احذف فوراً بغض النظر عن المحتوى أو الأدمن
+            try: bot.delete_message(chat_id, message.message_id)
+            except: pass
             return
 
     # الكروب المستثنى: الأدمن محميون من كل قواعد الحذف
